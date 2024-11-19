@@ -1,0 +1,64 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+		"moduleDetection": "force",
+		"module": "Preserve",
+		"resolveJsonModule": true,
+		"allowJs": true,
+		"esModuleInterop": true,
+		"isolatedModules": true,
+    "lib": [
+      "ES2021",
+      "ESNext",
+      "ES5"
+    ],
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": false,
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "importHelpers": true,
+    "outDir": "./dist",
+    "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
+    "emitDecoratorMetadata": true,
+    "forceConsistentCasingInFileNames": true,
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
+    "paths": {
+      "_types/*": [
+        "./src/types/*"
+      ],
+      "@api/*": [
+        "./src/api/*"
+      ],
+      "@events/*": [
+        "./src/events/*"
+      ],
+      "@states/*": [
+        "./src/states/*"
+      ],
+      "@stack/*": [
+        "./stack/*"
+      ],
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "cdk.out",
+    "dist"
+  ],
+  "ts-node": {
+    "require": [
+      "tsconfig-paths/register"
+    ]
+  },
+}

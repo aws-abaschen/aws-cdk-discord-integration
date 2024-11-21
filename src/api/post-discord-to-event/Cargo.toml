@@ -9,16 +9,23 @@ async_once = "0.2.6"
 aws-config = "1.5.5"
 aws-sdk-sfn = "1.44.0"
 aws_lambda_events = "0.15.1"
-ed25519-dalek = "2"
-lambda_http = { version = "0.13.0", default-features = false, features = ["apigw_rest"] }
-rusty_interaction = {version = "0.2.3", features = ["types"]}
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = { version = "0.8", features = ["getrandom"] }
+rand_core = "0.6.4"
+
+lambda_http = { version = "0.13.0", default-features = false, features = [
+    "apigw_rest",
+] }
+rusty_interaction = { version = "0.2.3", features = ["types"] }
 lazy_static = "1.5.0"
 serde = "1.0.136"
 serde_json = "1.0.128"
 tokio = { version = "1", features = ["macros"] }
 tracing = { version = "0.1", features = ["log"] }
 lambda_runtime = "0.7"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "fmt",
+] }
 
 [dev-dependencies]
 mockall = "0.13"

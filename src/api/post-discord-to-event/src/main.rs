@@ -9,7 +9,7 @@ use rusty_interaction::types::interaction::{
     Interaction, InteractionResponseType, InteractionType,
 };
 use serde_json::{json, Value};
-use std::env;
+use std::{env, fmt};
 
 lazy_static! {
     static ref STATE_MACHINE_ARN: String = env::var("STATE_MACHINE_ARN")
@@ -100,7 +100,7 @@ impl Verifier {
     /// [`Self::try_new()`].
     #[must_use]
     pub fn new(public_key: &str) -> Self {
-        Self::try_new(parse_hex(public_key).expect("public key must be a 64 digit hex string"))
+        Self::try_new(&parse_hex::<PUBLIC_KEY_LENGTH>(public_key).expect("public key must be a 64 digit hex string"))
             .expect("invalid public key")
     }
 
@@ -109,9 +109,9 @@ impl Verifier {
     /// # Errors
     ///
     /// [`InvalidKey`] if the key isn't cryptographically valid.
-    pub fn try_new(public_key: [u8; 32]) -> Result<Self, InvalidKey> {
+    pub fn try_new(public_key: &[u8; PUBLIC_KEY_LENGTH]) -> Result<Self, InvalidKey> {
         Ok(Self {
-            public_key: VerifyingKey::from_bytes(&public_key).map_err(InvalidKey)?,
+            public_key: VerifyingKey::from_bytes(public_key).map_err(InvalidKey)?,
         })
     }
 
@@ -123,7 +123,7 @@ impl Verifier {
         //trace body in the execution
 
         // Extract and parse signature
-        let signature_bytes = parse_hex(signature).ok_or(())?;
+        let signature_bytes = parse_hex::<64>(signature).ok_or(())?;
         let sig = Signature::from_bytes(&signature_bytes);
 
         // Verify
@@ -136,11 +136,44 @@ impl Verifier {
             .verify(&message_to_verify, &sig)
             .map_err(|_| ())
     }
+
+    pub fn verify_bytes(&self, signature_bytes: &[u8;SIGNATURE_LENGTH], timestamp: &str, body: &[u8]) -> Result<(), ()> {
+        use ed25519_dalek::Verifier as _;
+        //trace body in the execution
+
+        // Extract and parse signature
+        let sig = Signature::from_bytes(signature_bytes);
+
+        // Verify
+        tracing::trace!("sig: {:?}", signature_bytes);
+        tracing::trace!("timestamp: {:?}", timestamp);
+        tracing::trace!("body: {:?}", body);
+
+        let message_to_verify = [timestamp.as_bytes(), body].concat();
+        self.public_key
+            .verify(&message_to_verify, &sig)
+            .map_err(|_| ())
+    }
+
+
+    
 }
 
+impl fmt::Display for Verifier {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for byte in self.public_key.as_bytes() {
+            // Decide if you want to pad the value or have spaces inbetween, etc.
+            write!(fmt, "{:2X?}", byte)?;
+        }
+        Ok(())
+    }
+}
+use ed25519_dalek::{PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::{rngs::OsRng, RngCore};
+    use ed25519_dalek::{Signer, SigningKey, SECRET_KEY_LENGTH};
 
     #[test]
     fn test_parse_hex() {
@@ -154,7 +187,7 @@ mod tests {
     #[test]
     fn test_parse_public_key() {
         assert_eq!(
-            parse_hex::<32>("e16dd6b9e483616672cfa1e9982c9027857d9d60e18e03b73eb26f0a11273233"),
+            parse_hex::<PUBLIC_KEY_LENGTH>("e16dd6b9e483616672cfa1e9982c9027857d9d60e18e03b73eb26f0a11273233"),
             Some([
                 0xE1, 0x6D, 0xD6, 0xB9, 0xE4, 0x83, 0x61, 0x66, 0x72, 0xCF, 0xA1, 0xE9, 0x98, 0x2C,
                 0x90, 0x27, 0x85, 0x7D, 0x9D, 0x60, 0xE1, 0x8E, 0x03, 0xB7, 0x3E, 0xB2, 0x6F, 0x0A,
@@ -164,7 +197,7 @@ mod tests {
         assert_eq!(
             Verifier::new("e16dd6b9e483616672cfa1e9982c9027857d9d60e18e03b73eb26f0a11273233")
                 .public_key,
-            Verifier::try_new([
+            Verifier::try_new(&[
                 0xE1, 0x6D, 0xD6, 0xB9, 0xE4, 0x83, 0x61, 0x66, 0x72, 0xCF, 0xA1, 0xE9, 0x98, 0x2C,
                 0x90, 0x27, 0x85, 0x7D, 0x9D, 0x60, 0xE1, 0x8E, 0x03, 0xB7, 0x3E, 0xB2, 0x6F, 0x0A,
                 0x11, 0x27, 0x32, 0x33
@@ -174,14 +207,48 @@ mod tests {
         );
     }
 
+
+
+    #[test]
+    fn test_generate_discord_signature() {
+        let sig_timestamp = "1732187098";
+        let body = "{\"app_permissions\":\"562949953601536\",\"application_id\":\"989195982531096616\",\"authorizing_integration_owners\":{},\"entitlements\":[],\"id\":\"1309112315525992459\",\"token\":\"aW50ZXJhY3Rpb246MTMwOTExMjMxNTUyNTk5MjQ1OTpySEtVOFBmS2lrZGtqRmIybmFyTEZKZzVEaXZIZnF4N05uTWtmWXlFb1R1OEc2WUoyQ1FvdzhPYk1KcVFRa05rbXptR2VaSVZJVG93dUEya0lSNlRnOUpZN2Znb1dlRm5sV0lMNnhPcFM5Z3pYUUJoOHNzeTU4TDh3UDl0Yzh2SQ\",\"type\":1,\"user\":{\"avatar\":\"c6a249645d46209f337279cd2ca998c7\",\"avatar_decoration_data\":null,\"bot\":true,\"clan\":null,\"discriminator\":\"0000\",\"global_name\":\"Discord\",\"id\":\"643945264868098049\",\"public_flags\":1,\"system\":true,\"username\":\"discord\"},\"version\":1}".as_bytes();
+        let message_to_verify = [sig_timestamp.as_bytes(), &body].concat();
+        let mut key = [0u8; SECRET_KEY_LENGTH];
+        OsRng.fill_bytes(&mut key);
+        let mut csprng = OsRng;
+        let signing_key: SigningKey = SigningKey::generate(&mut csprng);
+        let signature: Signature = signing_key.sign(&message_to_verify);
+        let verifying_key= signing_key.verifying_key();
+        let public_key_bytes = Verifier::try_new(verifying_key.as_bytes()).unwrap();
+        //check signature length and public key length
+        assert_eq!(signature.to_bytes().len(), SIGNATURE_LENGTH, "Checking signature length of {}", signature.to_bytes().len());
+        assert_eq!(public_key_bytes.public_key.to_bytes().len(), PUBLIC_KEY_LENGTH, "Checking public key length of {}", public_key_bytes.public_key.to_bytes().len());
+        assert!(public_key_bytes.verify(&signature.to_string(), &sig_timestamp, &body).is_ok(), "Verifying signature of body");
+    }
+
     //test validate discord signature
     #[test]
     fn test_validate_discord_signature() {
         let sig_ed25519 = "ced5a01161acd1cb3115abe922b5ebf1acff00f7f08175ab71ff5da03fafaf1a16c99f263cfbc616bf4c977e3d0720ad40d3e100aa5db1ab3a492ed453b53e0f";
         let sig_timestamp = "1732187098";
-        let body = [123, 34, 97, 112, 112, 95, 112, 101, 114, 109, 105, 115, 115, 105, 111, 110, 115, 34, 58, 34, 53, 54, 50, 57, 52, 57, 57, 53, 51, 54, 48, 49, 53, 51, 54, 34, 44, 34, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 95, 105, 100, 34, 58, 34, 57, 56, 57, 49, 57, 53, 57, 56, 50, 53, 51, 49, 48, 57, 54, 54, 49, 54, 34, 44, 34, 97, 117, 116, 104, 111, 114, 105, 122, 105, 110, 103, 95, 105, 110, 116, 101, 103, 114, 97, 116, 105, 111, 110, 95, 111, 119, 110, 101, 114, 115, 34, 58, 123, 125, 44, 34, 101, 110, 116, 105, 116, 108, 101, 109, 101, 110, 116, 115, 34, 58, 91, 93, 44, 34, 105, 100, 34, 58, 34, 49, 51, 48, 57, 49, 49, 50, 51, 49, 53, 53, 50, 53, 57, 57, 50, 52, 53, 57, 34, 44, 34, 116, 111, 107, 101, 110, 34, 58, 34, 97, 87, 53, 48, 90, 88, 74, 104, 89, 51, 82, 112, 98, 50, 52, 54, 77, 84, 77, 119, 79, 84, 69, 120, 77, 106, 77, 120, 78, 84, 85, 121, 78, 84, 107, 53, 77, 106, 81, 49, 79, 84, 112, 121, 83, 69, 116, 86, 79, 70, 66, 109, 83, 50, 108, 114, 90, 71, 116, 113, 82, 109, 73, 121, 98, 109, 70, 121, 84, 69, 90, 75, 90, 122, 86, 69, 97, 88, 90, 73, 90, 110, 70, 52, 78, 48, 53, 117, 84, 87, 116, 109, 87, 88, 108, 70, 98, 49, 82, 49, 79, 69, 99, 50, 87, 85, 111, 121, 81, 49, 70, 118, 100, 122, 104, 80, 89, 107, 49, 75, 99, 86, 70, 82, 97, 48, 53, 114, 98, 88, 112, 116, 82, 50, 86, 97, 83, 86, 90, 74, 86, 71, 57, 51, 100, 85, 69, 121, 97, 48, 108, 83, 78, 108, 82, 110, 79, 85, 112, 90, 78, 50, 90, 110, 98, 49, 100, 108, 82, 109, 53, 115, 86, 48, 108, 77, 78, 110, 104, 80, 99, 70, 77, 53, 90, 51, 112, 89, 85, 85, 74, 111, 79, 72, 78, 122, 101, 84, 85, 52, 84, 68, 104, 51, 85, 68, 108, 48, 89, 122, 104, 50, 83, 81, 34, 44, 34, 116, 121, 112, 101, 34, 58, 49, 44, 34, 117, 115, 101, 114, 34, 58, 123, 34, 97, 118, 97, 116, 97, 114, 34, 58, 34, 99, 54, 97, 50, 52, 57, 54, 52, 53, 100, 52, 54, 50, 48, 57, 102, 51, 51, 55, 50, 55, 57, 99, 100, 50, 99, 97, 57, 57, 56, 99, 55, 34, 44, 34, 97, 118, 97, 116, 97, 114, 95, 100, 101, 99, 111, 114, 97, 116, 105, 111, 110, 95, 100, 97, 116, 97, 34, 58, 110, 117, 108, 108, 44, 34, 98, 111, 116, 34, 58, 116, 114, 117, 101, 44, 34, 99, 108, 97, 110, 34, 58, 110, 117, 108, 108, 44, 34, 100, 105, 115, 99, 114, 105, 109, 105, 110, 97, 116, 111, 114, 34, 58, 34, 48, 48, 48, 48, 34, 44, 34, 103, 108, 111, 98, 97, 108, 95, 110, 97, 109, 101, 34, 58, 34, 68, 105, 115, 99, 111, 114, 100, 34, 44, 34, 105, 100, 34, 58, 34, 54, 52, 51, 57, 52, 53, 50, 54, 52, 56, 54, 56, 48, 57, 56, 48, 52, 57, 34, 44, 34, 112, 117, 98, 108, 105, 99, 95, 102, 108, 97, 103, 115, 34, 58, 49, 44, 34, 115, 121, 115, 116, 101, 109, 34, 58, 116, 114, 117, 101, 44, 34, 117, 115, 101, 114, 110, 97, 109, 101, 34, 58, 34, 100, 105, 115, 99, 111, 114, 100, 34, 125, 44, 34, 118, 101, 114, 115, 105, 111, 110, 34, 58, 49, 125];
-        assert_eq!(VERIFIER.verify(&sig_ed25519, &sig_timestamp, &body).is_ok(), true);
+        let body_str = "{\"app_permissions\":\"562949953601536\",\"application_id\":\"989195982531096616\",\"authorizing_integration_owners\":{},\"entitlements\":[],\"id\":\"1309112315525992459\",\"token\":\"aW50ZXJhY3Rpb246MTMwOTExMjMxNTUyNTk5MjQ1OTpySEtVOFBmS2lrZGtqRmIybmFyTEZKZzVEaXZIZnF4N05uTWtmWXlFb1R1OEc2WUoyQ1FvdzhPYk1KcVFRa05rbXptR2VaSVZJVG93dUEya0lSNlRnOUpZN2Znb1dlRm5sV0lMNnhPcFM5Z3pYUUJoOHNzeTU4TDh3UDl0Yzh2SQ\",\"type\":1,\"user\":{\"avatar\":\"c6a249645d46209f337279cd2ca998c7\",\"avatar_decoration_data\":null,\"bot\":true,\"clan\":null,\"discriminator\":\"0000\",\"global_name\":\"Discord\",\"id\":\"643945264868098049\",\"public_flags\":1,\"system\":true,\"username\":\"discord\"},\"version\":1}";
+        let verifier = Verifier::new("e16dd6b9e483616672cfa1e9982c9027857d9d60e18e03b73eb26f0a11273233");
+
+        println!("Converting signature");
+        let sig_ed25519_bytes = parse_hex::<SIGNATURE_LENGTH>(sig_ed25519).expect("Invalid signature");
+        assert_eq!(sig_ed25519_bytes.len(), SIGNATURE_LENGTH, "Checking signature length of {}", sig_ed25519_bytes.len());
+        println!("Checking public key");
+        assert_eq!(verifier.public_key.to_bytes().len(), PUBLIC_KEY_LENGTH, "Checking public key length of {}", verifier.public_key.to_bytes().len());
+
+        println!("sig_ed25519_bytes: {:?}", sig_ed25519_bytes);
+        println!("Checking signature length of {}", sig_ed25519_bytes.len());
+        println!("VERIFIER.public_key.to_bytes(): {:?}", verifier.public_key.to_bytes());
+        println!("Checking public key length of {}", verifier.public_key.to_bytes().len());
+        
+        assert_eq!(verifier.verify(&sig_ed25519, &sig_timestamp, body_str.as_bytes()).is_ok(), true);
     }
+        
 }
 
 pub fn validate_discord_signature(headers: &HeaderMap, body: &Body) -> bool {
@@ -199,7 +266,12 @@ pub fn validate_discord_signature(headers: &HeaderMap, body: &Body) -> bool {
     .to_str()
     .unwrap_or("");
 
-    return VERIFIER.verify(&sig_ed25519, &sig_timestamp, body).is_ok();
+    assert!(match body {
+        aws_lambda_events::encodings::Body::Binary(_) => true,
+        _ => false
+      }, "Check body is raw bytes");
+
+    return VERIFIER.verify(&sig_ed25519, &sig_timestamp, body.as_ref()).is_ok();
 }
 
 #[tokio::main]

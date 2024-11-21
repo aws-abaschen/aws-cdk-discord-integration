@@ -52,5 +52,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "cargo-lambda-cdk": "^0.0.22"
   }
 }

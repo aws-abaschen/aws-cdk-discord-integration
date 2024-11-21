@@ -1,0 +1,11 @@
+{
+    "amazonQ.telemetry": false,
+    "rust-analyzer.cargo.cfgs": {
+
+        "miri": null,
+        "debug_assertions": null
+    },
+    "rust-analyzer.rustfmt.extraArgs": [
+        "edition=2021"
+    ]
+}

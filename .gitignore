@@ -21,3 +21,4 @@ functions/**/*.js
 functions/**/*.d.ts
 cdk.context.json
 /.tmp
+target

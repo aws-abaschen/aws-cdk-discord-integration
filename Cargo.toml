@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "src/api/post-discord-to-event"
+]
+resolver = "2"
+package.edition = "2021"

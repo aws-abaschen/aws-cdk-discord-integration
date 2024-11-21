@@ -1,0 +1,44 @@
+{
+    "name": "Rust",
+    "image": "ghcr.io/cargo-lambda/cargo-lambda:1.5.0",
+
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "installZsh": "true",
+            "username": "vscode",
+            "userUid": "1000",
+            "userGid": "1000",
+            "upgradePackages": "true"
+        },
+        "ghcr.io/devcontainers/features/rust:1": "latest",
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest",
+            "ppa": "false"
+        },
+        "ghcr.io/devcontainers/features/aws-cli:1.1.0": {},
+        "ghcr.io/devcontainers-extra/features/aws-cdk:2": {}
+    },
+    "mounts": [
+        "source=/home/${localEnv:USER}/.aws,target=/home/vscode/.aws,type=bind,consistency=cached",
+        "source=rust-cache,target=/home/vscode/.cargo",
+        {
+            "source": "node_modules",
+            "target": "${containerWorkspaceFolder}/node_modules",
+            "type": "volume"
+        }
+    ],
+    "postCreateCommand": "sudo chown node node_modules && chown vscode:vscode -R /vscode && yarn",
+    "containerEnv": {
+        "CARGO_HOME": "~/.cargo"
+    },
+    "remoteUser": "vscode",
+    //"postCreateCommand": "sudo chown vscode:vscode ~/.cargo && sudo chown vscode:vscode node_modules && yarn",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "amazonwebservices.aws-toolkit-vscode",
+                "amazonwebservices.amazon-q-vscode"
+            ]
+        }
+    }
+}

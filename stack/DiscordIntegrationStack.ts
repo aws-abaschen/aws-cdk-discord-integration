@@ -1,9 +1,9 @@
-import { Aspects, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
+import { Aspects, CfnOutput, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import { AuthorizationType, LambdaIntegration, MethodLoggingLevel, RestApi } from "aws-cdk-lib/aws-apigateway";
 
 import { Certificate, CertificateValidation, KeyAlgorithm } from "aws-cdk-lib/aws-certificatemanager";
 import { ManagedPolicy, PolicyDocument, PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Code, CodeSigningConfig } from "aws-cdk-lib/aws-lambda";
+import { Code, CodeSigningConfig, Function, Runtime } from "aws-cdk-lib/aws-lambda";
 import { S3EventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { LogGroup } from "aws-cdk-lib/aws-logs";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
@@ -12,11 +12,10 @@ import { Bucket, EventType } from "aws-cdk-lib/aws-s3";
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Platform, SigningProfile } from "aws-cdk-lib/aws-signer";
 import { DefinitionBody, LogLevel, StateMachine } from "aws-cdk-lib/aws-stepfunctions";
-import { LlrtFunction } from "cdk-lambda-llrt";
 import { Construct } from "constructs";
 import { StackDecorator } from "./StackDecorator";
 import { NodetsFunction } from "./NodetsFunction";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { RustFunction } from 'cargo-lambda-cdk';
 
 export interface InteractionStackProps extends StackProps {
     domainName: string
@@ -93,9 +92,9 @@ export class InteractionStack extends Stack {
             //     allowMethods: ["POST", "GET"]
             // }
         });
-        new ARecord(this, `${props.domainName}-record`, {
+        const aRecord = new ARecord(this, `${props.domainName}-record`, {
             target: RecordTarget.fromAlias(new ApiGateway(api)),
-            recordName: props.domainName,
+            recordName: fqdn,
             zone: hostedZone
         });
 
@@ -135,14 +134,11 @@ export class InteractionStack extends Stack {
                 })
             }
         });
-
-        const fnDiscordToEvent = new NodejsFunction(this, 'discordToEventFunction', {
-            description: 'Register event from Discord',
-            code: Code.fromAsset(`${lambdaApiSrc}/post-discord-to-event/`),
-            logGroup: new LogGroup(this, 'discordToEventLog', { logGroupName: '/discord/api/discord-to-event' }),
+        const fnDiscordToEvent = new RustFunction(this, 'discordToEventFunction', {
+            manifestPath: `${lambdaApiSrc}/post-discord-to-event/Cargo.toml`,
             memorySize: 256,
+            description: 'Register event from Discord',
             role: fnDiscordToEvent_Role,
-            handler: "index.handler",
             environment: {
                 STATE_MACHINE_ARN: stateMachine.stateMachineArn,
                 PUBLIC_KEY: discordIntegrationSecret.secretValueFromJson('publicKey').unsafeUnwrap()
@@ -274,5 +270,9 @@ export class InteractionStack extends Stack {
         // // fnDiscordToEvent to SNS topic
         // this.topic.grantPublish(this.fnDiscordToEvent);
 
+        //show some relevant outputs
+        new CfnOutput(this, 'DiscordIntegrationSecretArn', { value: discordIntegrationSecret.secretArn });
+        // bot domain record
+        new CfnOutput(this, 'BotDomain', { value: aRecord.domainName });
     }
 }

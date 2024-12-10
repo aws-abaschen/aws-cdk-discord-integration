@@ -1,25 +1,33 @@
-import { Aspects, CfnOutput, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
+import { Aspects, RemovalPolicy, SecretValue, Stack, StackProps } from "aws-cdk-lib";
 import { AuthorizationType, LambdaIntegration, MethodLoggingLevel, RestApi } from "aws-cdk-lib/aws-apigateway";
 
 import { Certificate, CertificateValidation, KeyAlgorithm } from "aws-cdk-lib/aws-certificatemanager";
+import { AllowedMethods, CacheCookieBehavior, CacheHeaderBehavior, CachePolicy, CacheQueryStringBehavior, Distribution, LambdaEdgeEventType, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { RestApiOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { ManagedPolicy, PolicyDocument, PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Code, CodeSigningConfig, Function, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Key } from "aws-cdk-lib/aws-kms";
+import { Architecture, CodeSigningConfig, Runtime } from "aws-cdk-lib/aws-lambda";
 import { S3EventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup } from "aws-cdk-lib/aws-logs";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
-import { ApiGateway } from "aws-cdk-lib/aws-route53-targets";
-import { Bucket, EventType } from "aws-cdk-lib/aws-s3";
-import { Secret } from "aws-cdk-lib/aws-secretsmanager";
+import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
+import { Bucket, BucketAccessControl, EventType } from "aws-cdk-lib/aws-s3";
 import { Platform, SigningProfile } from "aws-cdk-lib/aws-signer";
+import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import { DefinitionBody, LogLevel, StateMachine } from "aws-cdk-lib/aws-stepfunctions";
-import { Construct } from "constructs";
-import { StackDecorator } from "./StackDecorator";
-import { NodetsFunction } from "./NodetsFunction";
 import { RustFunction } from 'cargo-lambda-cdk';
+import { Construct } from "constructs";
+import { NodetsFunction } from "./NodetsFunction";
+import { StackDecorator } from "./StackDecorator";
+import { PassthroughBehavior } from "aws-cdk-lib/aws-apigatewayv2";
 
 export interface InteractionStackProps extends StackProps {
     domainName: string
     zoneDomain: string
+    discordParametersRoot: string
+    ssmKmsKeyArn: string
+    discordPubKey: string
 }
 
 
@@ -27,8 +35,15 @@ export class InteractionStack extends Stack {
 
     constructor(scope: Construct, id: string, props: InteractionStackProps) {
         super(scope, id, props);
-
-        const discordIntegrationSecret = Secret.fromSecretNameV2(this, 'DiscordIntegrationSecret', 'discord/integration');
+        const paramkeys = ['applicationId', 'clientId', 'publicKey', 'botToken', 'clientSecret'];
+        const discordParameters: { applicationId: string, clientId: string, publicKey: string, botToken: string, clientSecret: string } =
+            ['applicationId', 'clientId', 'publicKey'].map(name => StringParameter.valueForStringParameter(this, `${props.discordParametersRoot}/${name}`))
+                .concat(['botToken', 'clientSecret'].map(name => SecretValue.ssmSecure(`${props.discordParametersRoot}/${name}`).unsafeUnwrap()))
+                .reduce((acc, cur, idx) => {
+                    const key = paramkeys[idx];
+                    acc[key] = cur;
+                    return acc;
+                }, {} as any);
 
         const signingProfile = new SigningProfile(this, 'SigningProfile', {
             platform: Platform.AWS_LAMBDA_SHA384_ECDSA,
@@ -51,7 +66,7 @@ export class InteractionStack extends Stack {
             validation: CertificateValidation.fromDns(hostedZone),
             certificateName: fqdn,
             subjectAlternativeNames: [fqdn],
-            keyAlgorithm: KeyAlgorithm.EC_SECP384R1
+            keyAlgorithm: KeyAlgorithm.EC_PRIME256V1
         });
 
         // new Metric({
@@ -80,22 +95,83 @@ export class InteractionStack extends Stack {
                 metricsEnabled: true,
                 tracingEnabled: true,
             },
-            domainName: {
-                domainName: fqdn,
-                certificate
-            },
             defaultMethodOptions: {
                 authorizationType: AuthorizationType.NONE
             },
-            // defaultCorsPreflightOptions: {
-            //     allowOrigins: ['discord.com', 'discordapi.com'],
-            //     allowMethods: ["POST", "GET"]
-            // }
+            binaryMediaTypes: ['*/*']
         });
-        const aRecord = new ARecord(this, `${props.domainName}-record`, {
-            target: RecordTarget.fromAlias(new ApiGateway(api)),
-            recordName: fqdn,
-            zone: hostedZone
+
+        const verifierLogGroup = new LogGroup(this, 'verifier-log-group', {
+            logGroupName: '/discord/lambda/verifier',
+            removalPolicy: RemovalPolicy.DESTROY
+        });
+
+        const verifierRole = new Role(this, 'verifier-role', {
+            assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+            managedPolicies: [
+                ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+            ],
+            inlinePolicies: {
+                stateMachineAllow: new PolicyDocument({
+                    statements: [
+                        new PolicyStatement({
+                            actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                            resources: [verifierLogGroup.logGroupArn]
+                        })
+                    ]
+                })
+            }
+        });
+        const verifier = new NodetsFunction(this, 'view', {
+            entry: 'src/api/check-signature/src/main.ts',
+            bundling: {
+                define: {
+                    'process.env.DISCORD_PUBLIC_KEY': `'${props.discordPubKey}'`
+                }
+            },
+            architecture: Architecture.X86_64,
+            memorySize: 128,
+            description: 'Check body signature',
+            runtime: Runtime.NODEJS_20_X,
+            logGroup: verifierLogGroup,
+            role: verifierRole
+        });
+
+        const distribution = new Distribution(this, 'distribution', {
+            defaultBehavior: {
+                origin: new RestApiOrigin(api),
+                cachePolicy: new CachePolicy(this, 'discord-integration-cache-policy', {
+                    cachePolicyName: 'DiscordIntegrationCachePolicy',
+                    comment: 'Cache policy for Discord Integration',
+                    enableAcceptEncodingGzip: true,
+                    enableAcceptEncodingBrotli: true,
+                    cookieBehavior: CacheCookieBehavior.none(),
+                    headerBehavior: CacheHeaderBehavior.allowList("x-signature-timestamp", "x-signature-ed25519"),
+                    queryStringBehavior: CacheQueryStringBehavior.none()
+                }),
+                allowedMethods: AllowedMethods.ALLOW_ALL,
+                viewerProtocolPolicy: ViewerProtocolPolicy.HTTPS_ONLY,
+
+                edgeLambdas: [
+                    {
+                        functionVersion: verifier.currentVersion,
+                        eventType: LambdaEdgeEventType.VIEWER_REQUEST,
+                        includeBody: true
+                    }
+                ]
+            },
+            enableLogging: true,
+            domainNames: [fqdn],
+            certificate: certificate
+        });
+        //allow distribution to write in loggroup
+        verifierLogGroup.grantWrite(new ServicePrincipal('logs.amazonaws.com'));
+
+        //create a route 53 ARecord for the distribution
+        new ARecord(this, 'aliasRecord', {
+            zone: hostedZone,
+            target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
+            recordName: fqdn
         });
 
         const stateMachine = new StateMachine(this, 'discordIntegration-state-machine', {
@@ -141,13 +217,16 @@ export class InteractionStack extends Stack {
             role: fnDiscordToEvent_Role,
             environment: {
                 STATE_MACHINE_ARN: stateMachine.stateMachineArn,
-                PUBLIC_KEY: discordIntegrationSecret.secretValueFromJson('publicKey').unsafeUnwrap()
             },
             //paramsAndSecrets: ParamsAndSecretsLayerVersion.fromVersionArn('arn:aws:lambda:eu-north-1:427196147048:layer:AWS-Parameters-and-Secrets-Lambda-Extension-Arm64:8')
         });
 
-        discordIntegrationSecret.grantRead(fnDiscordToEvent);
-        discordIntegrationResource.addMethod('POST', new LambdaIntegration(fnDiscordToEvent));
+        discordIntegrationResource.addMethod('POST', new LambdaIntegration(fnDiscordToEvent, {
+            passthroughBehavior: PassthroughBehavior.WHEN_NO_MATCH,
+            proxy: true,
+            requestTemplates: { 'application/octet-stream': '$input.body', 'application/json': '$input.body' },
+
+        }));
 
         ///////////////////////////////////////////////////////////////////////////////////////
         //S3 Bucket for discord commands
@@ -156,6 +235,8 @@ export class InteractionStack extends Stack {
             removalPolicy: RemovalPolicy.DESTROY,
             enforceSSL: true
         });
+
+        const ssmKey = Key.fromKeyArn(this, 'kms-ssm-key', props.ssmKmsKeyArn)
 
         const fnRegisterDiscordCommands_Role = new Role(this, `fn-role-register-discord-command`, {
             assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
@@ -173,9 +254,16 @@ export class InteractionStack extends Stack {
                 }),
                 readDiscordSecret: new PolicyDocument({
                     statements: [
+                        //allow usage of KMS key alias/aws/ssm to decrypt Secure Parameter
                         new PolicyStatement({
-                            actions: ['secretsmanager:GetSecretValue'],
-                            resources: [discordIntegrationSecret.secretArn]
+                            actions: ['kms:Decrypt'],
+                            resources: [ssmKey.keyArn]
+                        }),
+                        new PolicyStatement({
+                            actions: ['ssm:GetParametersByPath'],
+                            resources: [
+                                `arn:${this.partition}:ssm:${this.region}:${this.account}:parameter${props.discordParametersRoot}/*`
+                            ]
                         })
                     ]
                 }),
@@ -197,7 +285,7 @@ export class InteractionStack extends Stack {
             logGroup: new LogGroup(this, 's3PutDiscordCommandLog', { logGroupName: '/discord/events/s3/put-discord-command' }),
             environment: {
                 COMMAND_BUCKET: s3Bucket.bucketArn,
-                DISCORD_AUTH_SECRET: discordIntegrationSecret.secretName
+                DISCORD_PARAMS: props.discordParametersRoot
             }
         });
 
@@ -271,8 +359,5 @@ export class InteractionStack extends Stack {
         // this.topic.grantPublish(this.fnDiscordToEvent);
 
         //show some relevant outputs
-        new CfnOutput(this, 'DiscordIntegrationSecretArn', { value: discordIntegrationSecret.secretArn });
-        // bot domain record
-        new CfnOutput(this, 'BotDomain', { value: aRecord.domainName });
     }
 }

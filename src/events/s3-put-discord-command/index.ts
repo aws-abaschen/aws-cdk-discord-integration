@@ -1,33 +1,40 @@
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { ChatInputApplicationCommandData, REST, Routes } from "discord.js";
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetParametersByPathCommand, GetParametersByPathCommandOutput, SSMClient } from "@aws-sdk/client-ssm";
 import { S3Event } from 'aws-lambda';
+import { ChatInputApplicationCommandData, REST, Routes } from "discord.js";
 import 'source-map-support/register';
 
 const s3 = new S3Client();
-const ssm = new SecretsManagerClient();
+//create ssm client
+const ssm = new SSMClient();
 
 const bucket = process.env.COMMAND_BUCKET;
-const tokenSecretKey = process.env.DISCORD_AUTH_SECRET;
-let authSecret: string | undefined;
+const discordParams = process.env.DISCORD_PARAMS;
+let authSecrets;
 try {
-    const resp = await ssm.send(new GetSecretValueCommand({
-        SecretId: tokenSecretKey,
-
+    const resp: GetParametersByPathCommandOutput = await ssm.send(new GetParametersByPathCommand({
+        Path: `${discordParams}/`,
+        WithDecryption: true
     }));
-    authSecret = resp.SecretString;
+
+    authSecrets = resp.Parameters?.reduce((acc, param) => {
+        const key: string = param.Name?.split('/').pop() as string;
+        if (!key) return acc;
+        acc[key] = param.Value ?? "";
+        return acc;
+    }, {} as { [key: string]: string });
 } catch (error) {
     // For a list of exceptions thrown, see
     // https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
     throw error;
 }
 
-if (!authSecret) {
-    throw new Error(`invalid or missing discord token (secret: ${tokenSecretKey})`);
+if (!authSecrets) {
+    throw new Error(`invalid or missing discord token`);
 }
 if (!bucket)
     throw new Error("missing bucket name env COMMAND_BUCKET");
-const { applicationId, botToken } = JSON.parse(authSecret);
+const { applicationId, botToken } = authSecrets;
 
 const discord = new REST().setToken(botToken);
 export const handler = async (event: S3Event): Promise<any> => {

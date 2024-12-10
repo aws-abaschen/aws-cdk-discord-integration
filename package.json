@@ -32,6 +32,7 @@
     "@aws-sdk/client-sfn": "^3.645.0",
     "@aws-sdk/client-sns": "^3.645.0",
     "@aws-sdk/client-sqs": "^3.645.0",
+    "@aws-sdk/client-ssm": "^3.698.0",
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "^22.5.4",
     "aws-cdk": "^2.156.0",
@@ -48,10 +49,12 @@
     "ts-jest": "^29.2.5",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-es6": "^1.0.3",
     "typescript": "^5.5.4"
   },
   "engines": {
-    "node": ">=20"
+    "node": "=20"
   },
   "devDependencies": {
     "cargo-lambda-cdk": "^0.0.22"

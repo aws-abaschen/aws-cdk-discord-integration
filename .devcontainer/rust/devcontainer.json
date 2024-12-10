@@ -16,7 +16,8 @@
             "ppa": "false"
         },
         "ghcr.io/devcontainers/features/aws-cli:1.1.0": {},
-        "ghcr.io/devcontainers-extra/features/aws-cdk:2": {}
+        "ghcr.io/devcontainers-extra/features/aws-cdk:2": {},
+        "ghcr.io/devcontainers/features/node:1": {"version": "20"}
     },
     "mounts": [
         "source=/home/${localEnv:USER}/.aws,target=/home/vscode/.aws,type=bind,consistency=cached",
@@ -27,7 +28,7 @@
             "type": "volume"
         }
     ],
-    "postCreateCommand": "sudo chown node node_modules && chown vscode:vscode -R /vscode && yarn",
+    "postCreateCommand": "sudo chown vscode node_modules && sudo chown vscode:vscode -R /vscode && yarn",
     "containerEnv": {
         "CARGO_HOME": "~/.cargo"
     },

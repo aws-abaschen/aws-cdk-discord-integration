@@ -187,7 +187,7 @@ export class InteractionStack extends Stack {
             },
         });
 
-        const discordIntegrationResource = api.root.addResource('discord', {
+        const discordIntegrationResource = api.root.addResource('discord').addResource('interactions', {
             defaultCorsPreflightOptions: {
                 allowOrigins: ['discord.com', 'discordapi.com'],
                 allowMethods: ["POST"]

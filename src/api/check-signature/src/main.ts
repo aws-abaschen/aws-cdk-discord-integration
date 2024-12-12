@@ -23,6 +23,12 @@ export const handler: CloudFrontRequestHandler = async (event: CloudFrontRequest
     console.log(JSON.stringify({ headers, ...req }));
     return {
       status: '400',
+      headers: {
+        'content-type': [{
+          key: 'Content-Type',
+          value: 'application/json'
+        }]
+      },
       body: JSON.stringify({ errorMessage: "Invalid request" })
     };
   }
@@ -47,6 +53,12 @@ export const handler: CloudFrontRequestHandler = async (event: CloudFrontRequest
     console.error('invalid-signature');
     return {
       status: '401',
+      headers: {
+        'content-type': [{
+          key: 'Content-Type',
+          value: 'application/json'
+        }]
+      },
       body: JSON.stringify({ errorMessage: "invalid signature" })
     };
   }
@@ -57,6 +69,12 @@ export const handler: CloudFrontRequestHandler = async (event: CloudFrontRequest
   if (type === 1) {
     const response: CloudFrontResultResponse = {
       status: '200',
+      headers: {
+        'content-type': [{
+          key: 'Content-Type',
+          value: 'application/json'
+        }]
+      },
       body: JSON.stringify({ type: 1 })
     };
 

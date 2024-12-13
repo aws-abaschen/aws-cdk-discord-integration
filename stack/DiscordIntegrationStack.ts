@@ -1,4 +1,4 @@
-import { Aspects, RemovalPolicy, SecretValue, Stack, StackProps } from "aws-cdk-lib";
+import { Aspects, CfnOutput, RemovalPolicy, SecretValue, Stack, StackProps } from "aws-cdk-lib";
 import { AuthorizationType, LambdaIntegration, MethodLoggingLevel, RestApi } from "aws-cdk-lib/aws-apigateway";
 
 import { Certificate, CertificateValidation, KeyAlgorithm } from "aws-cdk-lib/aws-certificatemanager";
@@ -234,6 +234,11 @@ export class InteractionStack extends Stack {
             autoDeleteObjects: true,
             removalPolicy: RemovalPolicy.DESTROY,
             enforceSSL: true
+        });
+
+        //output bucketName
+        new CfnOutput(this, 'discord-command-definition-bucket-name', {
+            value: s3Bucket.bucketName
         });
 
         const ssmKey = Key.fromKeyArn(this, 'kms-ssm-key', props.ssmKmsKeyArn)

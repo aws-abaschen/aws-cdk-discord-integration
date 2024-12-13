@@ -131,7 +131,6 @@ mod test {
     use serde::Deserialize;
     use serde_json::from_str;
     use lambda_runtime::{Config, Context};
-    use tracing::info;
 
     #[derive(Deserialize)]
     struct InteractionResponseMessage {
@@ -158,7 +157,7 @@ mod test {
                     .execution_arn("test")
                     .build().expect("Build invalid"))
             });
-        let input: ApiGatewayProxyRequest = from_str(include_str!("tests/example.json")).expect("Invalid ApiGatewayProxyRequest JSON");
+        let input: ApiGatewayProxyRequest = from_str(include_str!("tests/ping.json")).expect("Invalid ApiGatewayProxyRequest JSON");
         let mut headers: HeaderMap = HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert("lambda-runtime-deadline-ms", HeaderValue::from_static("15000"));

@@ -5,7 +5,9 @@
   "scripts": {
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "deploy": "cdk deploy '*' --outputs-file ./cdk.out/output.json",
+    "update-commands": "node src/commands/createGlobalCommands.mjs"
   },
   "bin": {
     "esbuild": "esbuild"
@@ -27,7 +29,7 @@
   },
   "homepage": "https://github.com/aws-abaschen/aws-cdk-discord-integration#readme",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.645.0",
+    "@aws-sdk/client-s3": "^3.709.0",
     "@aws-sdk/client-secrets-manager": "^3.645.0",
     "@aws-sdk/client-sfn": "^3.645.0",
     "@aws-sdk/client-sns": "^3.645.0",

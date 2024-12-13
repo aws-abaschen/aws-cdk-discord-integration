@@ -284,7 +284,6 @@ export class InteractionStack extends Stack {
             role: fnRegisterDiscordCommands_Role,
             logGroup: new LogGroup(this, 's3PutDiscordCommandLog', { logGroupName: '/discord/events/s3/put-discord-command' }),
             environment: {
-                COMMAND_BUCKET: s3Bucket.bucketArn,
                 DISCORD_PARAMS: props.discordParametersRoot
             }
         });

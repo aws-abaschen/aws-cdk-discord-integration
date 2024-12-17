@@ -2,12 +2,14 @@
   "name": "aws-cdk-discord-integration",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "scripts": {
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
     "deploy": "cdk deploy '*' --outputs-file ./cdk.out/output.json",
-    "update-commands": "node src/commands/createGlobalCommands.mjs"
+    "commands": "npx tsx src/commands/createGlobalCommands.ts",
+    "all": "yarn deploy && npm run update-commands"
   },
   "bin": {
     "esbuild": "esbuild"
@@ -56,9 +58,10 @@
     "typescript": "^5.5.4"
   },
   "engines": {
-    "node": "=20"
+    "node": ">=22"
   },
   "devDependencies": {
+    "@tsconfig/recommended": "^1.0.8",
     "cargo-lambda-cdk": "^0.0.22"
   }
 }

@@ -2758,6 +2758,11 @@
     "@smithy/types" "^3.7.2"
     tslib "^2.6.2"
 
+"@tsconfig/recommended@^1.0.8":
+  version "1.0.8"
+  resolved "https://registry.yarnpkg.com/@tsconfig/recommended/-/recommended-1.0.8.tgz#16483d57b56bbbd32b8c3af0eff1a40c32d006fa"
+  integrity sha512-TotjFaaXveVUdsrXCdalyF6E5RyG6+7hHHQVZonQtdlk1rJZ1myDIvPUUKPhoYv+JAzThb2lQJh9+9ZfF46hsA==
+
 "@types/aws-lambda@^8.10.145":
   version "8.10.145"
   resolved "https://registry.npmjs.org/@types/aws-lambda/-/aws-lambda-8.10.145.tgz"

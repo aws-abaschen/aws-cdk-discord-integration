@@ -24,3 +24,4 @@ cdk.context.json
 target
 /venv/
 *.http
+src/**/*.js

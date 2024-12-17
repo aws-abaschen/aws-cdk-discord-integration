@@ -17,7 +17,8 @@
         },
         "ghcr.io/devcontainers/features/aws-cli:1.1.0": {},
         "ghcr.io/devcontainers-extra/features/aws-cdk:2": {},
-        "ghcr.io/devcontainers/features/node:1": {"version": "20"}
+        //need 21 for fetch api
+        "ghcr.io/devcontainers/features/node:1": {"version": "22"}
     },
     "mounts": [
         "source=/home/${localEnv:USER}/.aws,target=/home/vscode/.aws,type=bind,consistency=cached",

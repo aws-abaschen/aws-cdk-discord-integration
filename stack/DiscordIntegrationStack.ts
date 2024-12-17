@@ -1,6 +1,7 @@
 import { Aspects, CfnOutput, RemovalPolicy, SecretValue, Stack, StackProps } from "aws-cdk-lib";
 import { AuthorizationType, LambdaIntegration, MethodLoggingLevel, RestApi } from "aws-cdk-lib/aws-apigateway";
 
+import { PassthroughBehavior } from "aws-cdk-lib/aws-apigatewayv2";
 import { Certificate, CertificateValidation, KeyAlgorithm } from "aws-cdk-lib/aws-certificatemanager";
 import { AllowedMethods, CacheCookieBehavior, CacheHeaderBehavior, CachePolicy, CacheQueryStringBehavior, Distribution, LambdaEdgeEventType, ViewerProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
 import { RestApiOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
@@ -8,19 +9,20 @@ import { ManagedPolicy, PolicyDocument, PolicyStatement, Role, ServicePrincipal 
 import { Key } from "aws-cdk-lib/aws-kms";
 import { Architecture, CodeSigningConfig, Runtime } from "aws-cdk-lib/aws-lambda";
 import { S3EventSource } from "aws-cdk-lib/aws-lambda-event-sources";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup } from "aws-cdk-lib/aws-logs";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
-import { Bucket, BucketAccessControl, EventType } from "aws-cdk-lib/aws-s3";
+import { Bucket, EventType } from "aws-cdk-lib/aws-s3";
 import { Platform, SigningProfile } from "aws-cdk-lib/aws-signer";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
-import { DefinitionBody, LogLevel, StateMachine } from "aws-cdk-lib/aws-stepfunctions";
+import { Chain, Choice, Condition, DefinitionBody, Fail, IChainable, JsonPath, LogLevel, Pass, Result, StateMachine, TaskInput } from "aws-cdk-lib/aws-stepfunctions";
+import { LambdaInvoke, HttpInvoke, HttpMethod, } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { RustFunction } from 'cargo-lambda-cdk';
 import { Construct } from "constructs";
 import { NodetsFunction } from "./NodetsFunction";
 import { StackDecorator } from "./StackDecorator";
-import { PassthroughBehavior } from "aws-cdk-lib/aws-apigatewayv2";
+import { Commands } from '../src/commands/handlers';
+import { RouteBases, Routes } from 'discord-api-types/rest/v10';
 
 export interface InteractionStackProps extends StackProps {
     domainName: string
@@ -174,9 +176,13 @@ export class InteractionStack extends Stack {
             recordName: fqdn
         });
 
+        const start = Chain.start(new Pass(this, 'PassState'));
+        start.next(this.createChoices());
+
         const stateMachine = new StateMachine(this, 'discordIntegration-state-machine', {
             role: stepfunctionsExecuteRole,
-            definitionBody: DefinitionBody.fromFile('src/discord-state-machine.json'),
+            definitionBody: DefinitionBody.fromChainable(start),
+            stateMachineName: 'discordIntegration-state-machine',
             //TODO subs
             //definitionSubstitutions: {},
             tracingEnabled: true,
@@ -302,66 +308,57 @@ export class InteractionStack extends Stack {
         });
 
         fnRegisterDiscordCommands.addEventSource(s3PutEventSource);
-        ///////////////////////////////////////////////////////////////////////
 
-        ///// Back channel
+    }
 
-        // readdirSync('src/states/', { withFileTypes: true })
-        //     .filter(dirent => dirent.isDirectory())
-        //     .map(dirent => dirent.name)
-        //     .map(name => {
-        //         const custom = fnCommandsCustomProps[name];
-        //         const lambdaProps = custom?.props ?? { ...this.lambdaDefault };
-        //         const onCreate = custom?.onCreate;
-        //         const fn = new NodetsFunction(this, `fn-discord-command-${name}-queue`, {
-        //             ...lambdaProps,
-        //             entry: `discord/commands/${name}/index.ts`,
-        //             description: `Discord '${name}' command handler`,
-        //             functionName: `fn-discord-command-${name}-queue`,
-        //             role: this.createLambdaRole(`DiscordCommand${name}`),
-        //             onSuccess: new SqsDestination(this.sendToDiscordQueue),
-        //             onFailure: new SqsDestination(failedCommandHandlerQueue.queue),
-        //         });
+    createChoices(): IChainable {
+        const root = new Choice(this, 'sfn-choice-from-command', {
+            comment: 'Choice state for command',
+        });
+        const after = new Pass(this, 'sfn-pass-after-choice', {
+            comment: 'Pass state after choice'
+        });
+        const catchErrorToContent = new Pass(this, 'sfn-catch-to-json', {
+            parameters: {
+                error: JsonPath.stringToJson(JsonPath.stringAt('$.error.Cause')),
+            },
+            resultPath: '$.response'
+        });
 
-        //         // SNS command==ping to fnSNSPingCommandToSQS
-        //         const deadletter = createDeadletter(this, `not-delivered-discord-command-${name}`).queue;
-        //         this.topic.addSubscription(new LambdaSubscription(fn, {
-        //             filterPolicy: {
-        //                 command: SubscriptionFilter.stringFilter({
-        //                     allowlist: [name]
-        //                 }),
-        //             },
-        //             deadLetterQueue: deadletter
-        //         }));
-        //         //deadletter.grantSendMessages(this.topic.topicArn);
-        //         this.commands[name] = fn;
-        //         if (onCreate) onCreate(fn);
-        //         return fn;
-        //     });
+        Commands.forEach(handler => {
+            const handlerLambda = new NodetsFunction(this, `lambda-${handler.name}`, {
+                entry: `src/commands/handlers/${handler.name}.ts`,
+                description: `Discord '${handler.name}' command handler`,
+                functionName: `fn-discord-command-${handler.name}-queue`
+            });
+            root.when(Condition.stringEquals('$.interaction.command', handler.name),
+                new LambdaInvoke(this, `sfn-invoke-${handler.name}`, {
+                    lambdaFunction: handlerLambda,
+                    resultPath: '$.response',
+                    resultSelector: {
+                        "content.$": "$.Payload.content"
+                    },
 
-        // //monitor unknown commands
-        // const unknownDiscord = createSqs(this, 'unknown-discord-command', {
-        // })
-        // this.topic.addSubscription(new SqsSubscription(unknownDiscord, {
-        //     filterPolicy: {
-        //         command: SubscriptionFilter.stringFilter({
-        //             denylist: Object.keys(this.commands)
-        //         }),
-        //     },
-        // }));
+                })
+                    .addCatch(catchErrorToContent, { resultPath: '$.error' })
+                    .next(after));
+        });
+        root.otherwise(new Fail(this, 'UnknownCommand', {
+            error: 'UnknownCommand',
+            cause: 'Unknown command'
+        }));
+        const send = new LambdaInvoke(this, 'sfn-send-webhook', {
+            lambdaFunction: new NodetsFunction(this, 'sfn-lambda-send-webhook', {
+                entry: 'src/commands/discord-webhook-handler.ts',
+                description: 'Send webhook to discord',
+                functionName: 'fn-discord-command-send-webhook-queue'
+            }),
+            payloadResponseOnly: true,
 
-        // // API to fnDiscordToEvent
-        // this.fnDiscordToEvent.grantInvoke(apiGatewayExecuteRole);
-        // entrypoint.addMethod('POST', new LambdaIntegration(this.fnDiscordToEvent, {
-        //     credentialsRole: apiGatewayExecuteRole,
-        //     //official discord timeout for interaction
-        //     timeout: Duration.seconds(10)
-        // }));
-
-
-        // // fnDiscordToEvent to SNS topic
-        // this.topic.grantPublish(this.fnDiscordToEvent);
-
-        //show some relevant outputs
+        });
+        //send response anyway
+        catchErrorToContent.next(send);
+        after.next(send);
+        return root;
     }
 }

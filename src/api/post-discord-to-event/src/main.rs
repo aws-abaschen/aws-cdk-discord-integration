@@ -60,17 +60,18 @@ async fn function_handler(runtime: &SFN, event: LambdaEvent<ApiGatewayProxyReque
             if interaction.data.name == "ping".to_string() {
                 CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("pong"))
             }else {
-                let input = serde_json::to_string(&json!({
-                    "webhookToken": interaction.token,
+                let input = serde_json::to_string(&json!({"interaction":{
+                    "interactionToken": interaction.token,
                     "channel": interaction.channel_id,
                     "guildId": interaction.guild_id,
                     "applicationId": interaction.application_id,
                     "interactionId": interaction.id,
                     "memberId": interaction.member.as_ref().map(|m| m.user.id),
                     "memberUsername": interaction.member.as_ref().map(|m| m.user.name.clone()),
-                    "type": InteractionType::Command
-
-                }))?;
+                    "command": interaction.data.name,
+                    "type": InteractionType::Command,
+                    "data": serde_json::to_value(&interaction.data).unwrap_or(json!({})),
+                }}))?;
                 match runtime.start_execution(&input).await
                 {
                     Ok(_) => 

@@ -1,16 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2022",
 		"moduleDetection": "force",
-		"module": "Preserve",
-		"resolveJsonModule": true,
+		"module": "ES2022",
 		"allowJs": true,
+    "moduleResolution": "Bundler",
 		"esModuleInterop": true,
 		"isolatedModules": true,
     "lib": [
-      "ES2021",
-      "ESNext",
-      "ES5"
+      "ES2022",
+      "ESNext"
     ],
     "declaration": true,
     "strict": true,

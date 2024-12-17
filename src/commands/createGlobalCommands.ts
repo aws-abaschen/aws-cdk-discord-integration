@@ -1,15 +1,7 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import * as fs from "node:fs";
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-const globalCommands = [
-    new SlashCommandBuilder()
-        .setName('ping').setDescription('Replies with pong!')
-        .addBooleanOption(o =>
-            o.setName('deferred').setDescription('Get a pong from the complete workflow')
-        )
-];
-const globalCommandsJson = globalCommands.map(command => command.toJSON());
-const globalCommandsJsonString = JSON.stringify(globalCommandsJson);
+import { Commands } from './handlers';
+const globalCommandsJsonString = JSON.stringify(Commands.map(o => o.command).map(command => command.toJSON()));
 //fs.writeFileSync('global.json', globalCommandsJsonString);
 
 // push file to s3
